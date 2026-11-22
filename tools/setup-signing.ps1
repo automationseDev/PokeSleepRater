@@ -34,6 +34,18 @@ New-Item -Path $folder -ItemType Directory -Force | Out-Null
 $keystore = Join-Path $folder 'pokesleeprater-release.jks'
 $passwordFile = Join-Path $folder 'pokesleeprater-release.password.txt'
 
+# Never replace a previously configured remote signing key with a new random key.
+$remoteSecretsJson = & $gh.Source secret list --repo $Repository --json name
+if ($LASTEXITCODE -ne 0) { throw '既存GitHub Secretsの確認に失敗しました。' }
+$remoteSecrets = @($remoteSecretsJson | ConvertFrom-Json)
+$hasRemoteSigning = @($remoteSecrets | Where-Object {
+    $_.name -eq 'PSR_KEYSTORE_BASE64' -or $_.name -eq 'PSR_KEYSTORE_PASSWORD'
+}).Count -gt 0
+
+if ($hasRemoteSigning -and -not (Test-Path $keystore)) {
+    throw 'GitHub側に署名用Secretsが既にあります。別の鍵で上書きすると更新不能になります。既存の署名鍵バックアップを復元してください。'
+}
+
 if ((Test-Path $keystore) -xor (Test-Path $passwordFile)) {
     throw '署名鍵とパスワードファイルの一方が見つかりません。誤って別の署名鍵を作らないよう停止しました。元のバックアップを復元してください。'
 }
@@ -67,12 +79,35 @@ if ($LASTEXITCODE -ne 0) {
     throw '署名鍵の確認に失敗しました。バックアップの対応関係を確認してください。'
 }
 
+# Pin a public certificate fingerprint so CI refuses accidental signing-key rotation.
+$details = & $keytool.Source -list -v -storetype PKCS12 -keystore $keystore `
+    -storepass $password -alias pokesleeprater | Out-String
+$match = [System.Text.RegularExpressions.Regex]::Match(
+    $details, '(?im)SHA256:\s*([A-Fa-f0-9:]{95})'
+)
+if (-not $match.Success) {
+    throw '署名証明書のSHA256指紋を取得できませんでした。'
+}
+$fingerprint = $match.Groups[1].Value.Replace(':', '').ToLowerInvariant()
+$remoteVarsJson = & $gh.Source variable list --repo $Repository --json name,value
+if ($LASTEXITCODE -ne 0) { throw 'GitHub Variablesの確認に失敗しました。' }
+$remoteVars = @($remoteVarsJson | ConvertFrom-Json)
+$pin = @($remoteVars | Where-Object { $_.name -eq 'PSR_SIGNING_CERT_SHA256' })
+if ($pin.Count -gt 0) {
+    $existingPin = ([string]$pin[0].value).Replace(':', '').ToLowerInvariant()
+    if ($existingPin -ne $fingerprint) {
+        throw 'GitHubに登録された署名証明書の指紋とローカル署名鍵が異なります。秘密鍵を上書きせず、元のバックアップを確認してください。'
+    }
+}
+
 Write-Host 'GitHub ActionsのSecretsを登録します...'
 $encoded = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($keystore))
 $encoded | & $gh.Source secret set PSR_KEYSTORE_BASE64 --repo $Repository
 if ($LASTEXITCODE -ne 0) { throw 'PSR_KEYSTORE_BASE64 の登録に失敗しました。' }
 $password | & $gh.Source secret set PSR_KEYSTORE_PASSWORD --repo $Repository
 if ($LASTEXITCODE -ne 0) { throw 'PSR_KEYSTORE_PASSWORD の登録に失敗しました。' }
+$fingerprint | & $gh.Source variable set PSR_SIGNING_CERT_SHA256 --repo $Repository
+if ($LASTEXITCODE -ne 0) { throw 'PSR_SIGNING_CERT_SHA256 の登録に失敗しました。' }
 
 Write-Host ''
 Write-Host '完了：同じ署名鍵で今後のAPKをビルドできます。' -ForegroundColor Green
