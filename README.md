@@ -19,7 +19,8 @@ Synologyの「Git Server」パッケージなどで `git` コマンドを利用�
 ```bash
 # NASのSSHターミナルで実行する
 command -v git
-command -v docker
+command -v curl
+command -v openssl
 
 mkdir -p /volume2/docker2
 cd /volume2/docker2
