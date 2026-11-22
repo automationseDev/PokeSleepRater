@@ -12,8 +12,8 @@ Android向けの非公式・オープンソース試作アプリ。ユーザー�
 
 ## Synology NASで集中管理する（推奨）
 
-PCへクローンする必要はありません。Synology DS220+等、Docker/Container Managerが使えるNASへSSHログインして実施します。
-NAS側では**ソースコードのクローンと秘密鍵の保管だけ**を行い、AndroidのビルドはGitHub-hosted Actionsで行います。
+PCへクローンする必要はありません。Synology DS220+等のNASへSSHログインして実施します。Docker/Container Managerの起動は不要です。
+NAS側では**ソースコードのクローン、署名鍵の保管、初回Secrets登録**を行い、AndroidのビルドはGitHub-hosted Actionsで行います。
 Synologyの「Git Server」パッケージなどで `git` コマンドを利用できるようにしてください。
 
 ```bash
@@ -30,9 +30,9 @@ cd PokeSleepRater
 bash tools/nas-signing-setup.sh
 ```
 
-既にクローン済みの場合は `git clone` を再実行せず、`git -C /volume2/docker2/PokeSleepRater pull --ff-only` で更新してください。
-スクリプトの実行中、最初の1回だけGitHubへのデバイスコード認証が求められます。表示されたGitHubの認証URLをブラウザで開き、コードを入力してください。
-スクリプトは `tools/nas-gh.Dockerfile` からGitHub CLIコンテナを作成し、`eclipse-temurin:17-jdk` を署名鍵生成時にのみ使用します。NAS上でAndroidをビルドする必要はありません。
+既にクローン済みの場合は `git clone` を再実行せず、`git -C /volume2/docker2/PokeSleepRater pull --ff-only` で更新してください。旧スクリプトが `docker build -q` で止まっていた場合も、この更新でDockerを使わずに初期設定できます。
+スクリプトの実行中、初回のみGitHubへのデバイスコード認証が求められます。表示された認証URLを別のブラウザで開いて、表示されたコードを入力してください。Dockerのイメージ作成を待つ必要はありません。
+NAS版スクリプトは **Docker/JDK不要** です。`curl`・`tar`・`openssl`・`git` を使用し、`gh` コマンドがない場合だけ、GitHub CLIの公式Linuxバイナリ（SHA-256検証付き）をダウンロードします。署名鍵はNAS上のOpenSSLで生成し、ビルドはGitHub Actionsで行います。通信のタイムアウトやエラーも表示します。
 
 **NAS内の秘密情報（公開Gitリポジトリに含めない）：**
 
@@ -43,6 +43,7 @@ bash tools/nas-signing-setup.sh
     release.jks                          # 固定署名の秘密鍵
     password                             # 秘密鍵のパスワード
     gh-config/                           # GitHub CLI認証（秘密情報を含む）
+    bin/                                 # 必要時だけ取得するGitHub CLI
 ```
 
 署名鍵・パスワード・GitHub認証情報はパーミッション700/600で管理し、公開リポジトリへ決して追加しないでください。
@@ -64,7 +65,7 @@ bash tools/nas-signing-setup.sh
 
 ### 初回のみ：署名鍵の生成・登録（Windows PowerShell）
 
-JDK 17（`keytool`）、GitHub CLI（`gh`）、GitHubへのログインが必要です。
+Windowsで実行する場合はJDK 17（`keytool`）、GitHub CLI（`gh`）、GitHubへのログインが必要です。
 ローカルリポジトリを最新化してから、次のスクリプトを1回だけ実行します。
 
 ```powershell
