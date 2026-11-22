@@ -1,4 +1,4 @@
-name: Android Build (Debug APK)
+name: Android CI and Signed APK
 
 on:
   push:
@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   build:
-    name: Unit test and assemble debug APK
+    name: Test and build updateable APK
     runs-on: ubuntu-24.04
     timeout-minutes: 35
 
@@ -41,18 +41,52 @@ jobs:
       - name: Install Android SDK 35
         run: sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0'
 
-      - name: Run unit tests and build APK
+      - name: Unit tests and compilation check
         run: gradle --no-daemon --stacktrace :app:testDebugUnitTest :app:assembleDebug
 
-      - name: Upload debug APK
+      # PRs only run the tests. Never expose private signing secrets to PR code.
+      - name: Validate and restore stable signing key
+        if: github.event_name != 'pull_request'
+        env:
+          PSR_KEYSTORE_BASE64: ${{ secrets.PSR_KEYSTORE_BASE64 }}
+          PSR_KEYSTORE_PASSWORD: ${{ secrets.PSR_KEYSTORE_PASSWORD }}
+        run: |
+          if [[ -z "$PSR_KEYSTORE_BASE64" || -z "$PSR_KEYSTORE_PASSWORD" ]]; then
+            echo "::error title=Signing setup required::GitHub Secrets PSR_KEYSTORE_BASE64 and PSR_KEYSTORE_PASSWORD are missing. Run tools/setup-signing.ps1 once on Windows."
+            exit 1
+          fi
+          umask 077
+          printf '%s' "$PSR_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/pokesleeprater-release.jks"
+          test -s "$RUNNER_TEMP/pokesleeprater-release.jks"
+          keytool -list -storetype PKCS12 -keystore "$RUNNER_TEMP/pokesleeprater-release.jks" -storepass "$PSR_KEYSTORE_PASSWORD" -alias pokesleeprater >/dev/null
+
+      - name: Build signed updateable release APK
+        if: github.event_name != 'pull_request'
+        env:
+          PSR_SIGNING_FILE: ${{ runner.temp }}/pokesleeprater-release.jks
+          PSR_SIGNING_PASSWORD: ${{ secrets.PSR_KEYSTORE_PASSWORD }}
+        run: |
+          CI_VERSION_CODE=$(( 1000 + GITHUB_RUN_NUMBER ))
+          echo "Building stable-signed APK with versionCode=$CI_VERSION_CODE"
+          gradle --no-daemon --stacktrace :app:assembleRelease "-PciVersionCode=$CI_VERSION_CODE"
+
+      - name: Verify release signature
+        if: github.event_name != 'pull_request'
+        run: |
+          APK=app/build/outputs/apk/release/app-release.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+
+      - name: Upload signed APK (install this one)
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
-          name: PokeSleepRater-debug-apk-${{ github.run_number }}
-          path: app/build/outputs/apk/debug/*.apk
+          name: PokeSleepRater-signed-update-v0.3.0-${{ github.run_number }}
+          path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
 
-      - name: Upload test reports
+      - name: Upload unit test reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -63,13 +97,19 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+      - name: Delete temporary signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/pokesleeprater-release.jks"
+
       - name: Build summary
-        if: success()
+        if: success() && github.event_name != 'pull_request'
         run: |
           {
-            echo '## PokeSleepRater Android CI'
-            echo '- Unit tests: passed'
-            echo '- Debug APK: assembled'
-            echo '- Download the APK from the **Artifacts** section.'
-            echo '- A fixed release keystore is not yet configured.'
+            echo '## PokeSleepRater stable-signed update'
+            echo '- Tests: passed'
+            echo '- Signed release APK: passed verification'
+            echo '- Application ID: dev.automationse.pokesleeprater (unchanged)'
+            echo "- versionCode: $(( 1000 + GITHUB_RUN_NUMBER ))"
+            echo '- Download **PokeSleepRater-signed-update-...** from Artifacts.'
+            echo '- Future releases signed by the same keystore can update in place.'
           } >> "$GITHUB_STEP_SUMMARY"
