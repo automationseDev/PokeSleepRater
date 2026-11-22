@@ -10,6 +10,48 @@ Android向けの非公式・オープンソース試作アプリ。ユーザー�
 
 **試作版であり、現時点のスコアは正確なゲーム内期待値や種族固有の評価を保証しません。** 取得できない情報を推測せず、将来の食材構成・ミント・サブスキルのたね等は未対応です。
 
+## Synology NASで集中管理する（推奨）
+
+PCへクローンする必要はありません。Synology DS220+等、Docker/Container Managerが使えるNASへSSHログインして実施します。
+NAS側では**ソースコードのクローンと秘密鍵の保管だけ**を行い、AndroidのビルドはGitHub-hosted Actionsで行います。
+Synologyの「Git Server」パッケージなどで `git` コマンドを利用できるようにしてください。
+
+```bash
+# NASのSSHターミナルで実行する
+command -v git
+command -v docker
+
+mkdir -p /volume2/docker2
+cd /volume2/docker2
+git clone https://github.com/automationseDev/PokeSleepRater.git
+cd PokeSleepRater
+
+# 署名鍵の新規作成・GitHub Secrets登録・Actions起動（初回のみ）
+bash tools/nas-signing-setup.sh
+```
+
+既にクローン済みの場合は `git clone` を再実行せず、`git -C /volume2/docker2/PokeSleepRater pull --ff-only` で更新してください。
+スクリプトの実行中、最初の1回だけGitHubへのデバイスコード認証が求められます。表示されたGitHubの認証URLをブラウザで開き、コードを入力してください。
+スクリプトは `tools/nas-gh.Dockerfile` からGitHub CLIコンテナを作成し、`eclipse-temurin:17-jdk` を署名鍵生成時にのみ使用します。NAS上でAndroidをビルドする必要はありません。
+
+**NAS内の秘密情報（公開Gitリポジトリに含めない）：**
+
+```text
+/volume2/docker2/
+  PokeSleepRater/                         # 公開Gitリポジトリのクローン
+  .secrets/pokesleeprater/
+    release.jks                          # 固定署名の秘密鍵
+    password                             # 秘密鍵のパスワード
+    gh-config/                           # GitHub CLI認証（秘密情報を含む）
+```
+
+署名鍵・パスワード・GitHub認証情報はパーミッション700/600で管理し、公開リポジトリへ決して追加しないでください。
+**署名鍵とパスワードはNASとは別の安全な場所にバックアップ**してください。NAS故障や誤削除に備えるためです。
+同じ証明書で署名し続ける必要があるので、鍵がなくなった場合も新しい鍵を無断生成しない保護が入っています。
+
+一度署名設定が完了すれば、その後は **GitHubでmainを更新するだけ**で自動ビルドされます。
+普段はNASで鍵やGitHub CLIを動かし続ける必要はありません。最初の署名付き版への移行後はAPKを上書き更新できます。
+
 ## GitHub Actionsと署名付きAPK（v0.3.0以降）
 
 同じアプリID `dev.automationse.pokesleeprater` と、同じ固定署名鍵でAPKを作れば、
