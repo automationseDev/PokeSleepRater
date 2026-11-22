@@ -22,9 +22,19 @@ object LiveState {
         private set
     var status by mutableStateOf("準備完了")
         private set
+    var processedFrames by mutableStateOf(0)
+        private set
+    var lastError by mutableStateOf("")
+        private set
     fun updateCaptureState(value: Boolean) {
         capturing = value
-        status = if (value) "画面を読み取り中" else "停止中"
+        if (value) {
+            processedFrames = 0
+            lastError = ""
+            status = "画面共有を開始しました。OCR結果を待っています"
+        } else {
+            status = if (lastError.isNotBlank()) "エラーで停止" else "停止中"
+        }
     }
     fun chooseRole(value: Specialty) {
         role = value
@@ -33,13 +43,23 @@ object LiveState {
     fun reset() {
         observation = Observation()
         lastRecognizedText = ""
+        processedFrames = 0
+        lastError = ""
         report = Assessment.score(observation, role)
         status = if (capturing) "画面を読み取り中" else "準備完了"
     }
     fun onRecognizedText(raw: String) {
-        val hint = listOf("サブスキル", "おてつだい", "スキル確率", "きのみ", "食材確率", "性格")
-        if (hint.none { raw.contains(it) }) return
+        processedFrames += 1
         lastRecognizedText = raw.take(1500)
+        if (raw.isBlank()) {
+            status = "映像取得中：文字を認識できません（画面の共有対象を確認）"
+            return
+        }
+        val hint = listOf("サブスキル", "おてつだい", "スキル確率", "きのみ", "食材確率", "性格")
+        if (hint.none { raw.contains(it) }) {
+            status = "映像取得中：性格・サブスキルが見つかりません"
+            return
+        }
         val parsed = OcrParser.parse(raw)
         if (parsed.seenAtLeastOnce) {
             observation = observation.merge(parsed)
@@ -49,5 +69,8 @@ object LiveState {
             status = "ポケモン画面を検知 / 読み取り待ち"
         }
     }
-    fun onError() { status = "画面取得またはOCRでエラーが発生しました" }
+    fun onError(reason: String = "画面取得またはOCRでエラーが発生しました") {
+        lastError = reason.take(300)
+        status = "エラー：$lastError"
+    }
 }
