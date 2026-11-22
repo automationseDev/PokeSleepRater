@@ -8,3 +8,9 @@ build/
 *.keystore
 *.jks
 /captures/
+
+# Never commit signing key backups or encoded keystore material
+*.password.txt
+*.p12
+*.pfx
+*.b64
