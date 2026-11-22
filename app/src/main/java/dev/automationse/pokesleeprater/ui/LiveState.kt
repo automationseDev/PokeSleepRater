@@ -22,7 +22,7 @@ object LiveState {
         private set
     var status by mutableStateOf("準備完了")
         private set
-    fun setCapturing(value: Boolean) {
+    fun updateCaptureState(value: Boolean) {
         capturing = value
         status = if (value) "画面を読み取り中" else "停止中"
     }
