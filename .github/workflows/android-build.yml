@@ -1,0 +1,75 @@
+name: Android Build (Debug APK)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Unit test and assemble debug APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '8.9'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 35
+        run: sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0'
+
+      - name: Run unit tests and build APK
+        run: gradle --no-daemon --stacktrace :app:testDebugUnitTest :app:assembleDebug
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: PokeSleepRater-debug-apk-${{ github.run_number }}
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: PokeSleepRater-unit-test-results-${{ github.run_number }}
+          path: |
+            app/build/reports/tests/
+            app/build/test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Build summary
+        if: success()
+        run: |
+          {
+            echo '## PokeSleepRater Android CI'
+            echo '- Unit tests: passed'
+            echo '- Debug APK: assembled'
+            echo '- Download the APK from the **Artifacts** section.'
+            echo '- A fixed release keystore is not yet configured.'
+          } >> "$GITHUB_STEP_SUMMARY"
