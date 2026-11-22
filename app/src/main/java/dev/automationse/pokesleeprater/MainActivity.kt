@@ -25,6 +25,12 @@ import dev.automationse.pokesleeprater.engine.Specialty
 import dev.automationse.pokesleeprater.ui.LiveState
 
 class MainActivity : ComponentActivity() {
+    private var overlayEnabled by mutableStateOf(false)
+    override fun onResume() {
+        super.onResume()
+        overlayEnabled = Settings.canDrawOverlays(this)
+    }
+
     private val screenShare = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val token = result.data
         if (result.resultCode == Activity.RESULT_OK && token != null) {
@@ -33,7 +39,13 @@ class MainActivity : ComponentActivity() {
                 putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, result.resultCode)
                 putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, token)
             }
-            startForegroundService(start)
+            try {
+                startForegroundService(start)
+            } catch (e: Exception) {
+                LiveState.onError("画面共有サービス起動失敗: ${e.message ?: e.javaClass.simpleName}")
+            }
+        } else {
+            LiveState.onError("画面共有がキャンセルされました")
         }
     }
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -57,7 +69,7 @@ class MainActivity : ComponentActivity() {
                                 Uri.parse("package:$packageName"),
                             ))
                         },
-                        overlayGranted = { Settings.canDrawOverlays(this) },
+                        overlayGranted = overlayEnabled,
                     )
                 }
             }
@@ -67,10 +79,10 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun Home(
     start: () -> Unit, stop: () -> Unit,
-    overlayPermission: () -> Unit, overlayGranted: () -> Boolean,
+    overlayPermission: () -> Unit, overlayGranted: Boolean,
 ) {
     var showRaw by remember { mutableStateOf(false) }
-    val isOverlayGranted = overlayGranted()
+    val isOverlayGranted = overlayGranted
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -97,7 +109,7 @@ private fun Home(
             Button(onClick = start, enabled = !LiveState.capturing) { Text("画面解析を開始") }
             OutlinedButton(onClick = stop, enabled = LiveState.capturing) { Text("停止") }
         }
-        Text("開始後、Androidの共有確認画面でPokémon Sleepだけを選んでください。")
+        Text("開始後、Androidの画面共有確認で「画面全体」を選び、Pokémon Sleepに切り替えて性格・サブスキル画面を表示してください。")
         HorizontalDivider()
         Text("現在の評価", style = MaterialTheme.typography.titleMedium)
         Text(LiveState.report.oneLine, style = MaterialTheme.typography.headlineSmall)
@@ -106,6 +118,13 @@ private fun Home(
         OutlinedButton(onClick = { LiveState.reset() }) { Text("別の個体を評価するためにクリア") }
         HorizontalDivider()
         Text("診断", style = MaterialTheme.typography.titleSmall)
+        Text("処理済みOCRフレーム：${LiveState.processedFrames}")
+        if (LiveState.lastError.isNotBlank()) {
+            Text("エラー詳細：${LiveState.lastError}", color = MaterialTheme.colorScheme.error)
+        }
+        if (LiveState.capturing && !isOverlayGranted) {
+            Text("画面は読み取れますが、評価をゲーム上に重ねるにはオーバーレイ許可が必要です。")
+        }
         TextButton(onClick = { showRaw = !showRaw }) {
             Text(if (showRaw) "読み取りテキストを隠す" else "読み取りテキストを表示")
         }
