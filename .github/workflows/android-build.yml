@@ -70,12 +70,22 @@ jobs:
           echo "Building stable-signed APK with versionCode=$CI_VERSION_CODE"
           gradle --no-daemon --stacktrace :app:assembleRelease "-PciVersionCode=$CI_VERSION_CODE"
 
-      - name: Verify release signature
+      - name: Verify release signature and pinned certificate
         if: github.event_name != 'pull_request'
+        env:
+          EXPECTED_CERT_SHA256: ${{ vars.PSR_SIGNING_CERT_SHA256 }}
         run: |
           APK=app/build/outputs/apk/release/app-release.apk
           test -s "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+          VERIFY_OUTPUT=$("$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK")
+          echo "$VERIFY_OUTPUT"
+          ACTUAL=$(printf '%s\n' "$VERIFY_OUTPUT" | sed -nE 's/^Signer #1 certificate SHA-256 digest: ([A-Fa-f0-9]+).*$/\1/p' | head -n 1 | tr 'A-F' 'a-f')
+          EXPECTED=$(printf '%s' "$EXPECTED_CERT_SHA256" | tr -d ':' | tr 'A-F' 'a-f')
+          if [[ -z "$EXPECTED" || -z "$ACTUAL" || "$EXPECTED" != "$ACTUAL" ]]; then
+            echo "::error title=Signing certificate mismatch::The signed APK certificate differs from PSR_SIGNING_CERT_SHA256, or signing is not initialized."
+            exit 1
+          fi
+          echo "Signing certificate matches the pinned fingerprint."
 
       - name: Upload signed APK (install this one)
         if: github.event_name != 'pull_request'
