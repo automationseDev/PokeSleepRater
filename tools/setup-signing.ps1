@@ -15,12 +15,12 @@ if (-not $gh) {
 $keytool = Get-Command 'keytool' -ErrorAction SilentlyContinue
 if (-not $keytool -and $env:JAVA_HOME) {
     $candidate = Join-Path $env:JAVA_HOME 'bin\keytool.exe'
-    if (Test-Path $candidate) { $keytool = Get-Item $candidate }
+    if (Test-Path $candidate) { $keytool = Get-Command $candidate }
 }
 if (-not $keytool) {
     throw 'JDK (keytool) が必要です。JDK 17をインストールし、JAVA_HOMEを設定してください。'
 }
-& $gh.Source auth status 2>&1 | Out-Null
+& $gh.Source auth status | Out-Null
 if ($LASTEXITCODE -ne 0) {
     throw 'GitHubへの認証が必要です。gh auth login を実行してください。'
 }
