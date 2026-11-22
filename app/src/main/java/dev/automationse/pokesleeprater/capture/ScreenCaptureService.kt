@@ -121,7 +121,7 @@ class ScreenCaptureService : Service() {
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
             currentReader.surface, null, worker,
         )
-        LiveState.setCapturing(true)
+        LiveState.updateCaptureState(true)
         addOverlayIfAllowed()
     }
     private fun makeReader(w: Int, h: Int): ImageReader =
@@ -227,7 +227,7 @@ class ScreenCaptureService : Service() {
         projection = null
         thread?.quitSafely()
         thread = null
-        LiveState.setCapturing(false)
+        LiveState.updateCaptureState(false)
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
