@@ -1,5 +1,6 @@
 package dev.automationse.pokesleeprater.capture
 
+import android.app.Activity
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -69,18 +70,20 @@ class ScreenCaptureService : Service() {
             ACTION_STOP -> finishCapture()
             ACTION_START -> {
                 if (projection == null) {
-                    val code = intent.getIntExtra(EXTRA_RESULT_CODE, -1)
+                    val code = intent.getIntExtra(EXTRA_RESULT_CODE, Activity.RESULT_CANCELED)
                     @Suppress("DEPRECATION")
                     val data: Intent? = if (Build.VERSION.SDK_INT >= 33) {
                         intent.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
                     } else intent.getParcelableExtra(EXTRA_RESULT_DATA)
-                    if (code < 0 || data == null) {
+                    // Activity.RESULT_OK is -1. A negative-value check rejected every success.
+                    if (code != Activity.RESULT_OK || data == null) {
+                        LiveState.onError("画面共有の許可データを受信できませんでした")
                         finishCapture()
                     } else {
                         startForegroundCapture()
                         try { beginCapture(code, data) }
-                        catch (_: Exception) {
-                            LiveState.onError()
+                        catch (e: Exception) {
+                            LiveState.onError("画面解析の開始に失敗: ${e.javaClass.simpleName}: ${e.message ?: "詳細不明"}")
                             finishCapture()
                         }
                     }
@@ -153,14 +156,14 @@ class ScreenCaptureService : Service() {
                     LiveState.onRecognizedText(result.text)
                     updateOverlay()
                 }
-                .addOnFailureListener { LiveState.onError() }
+                .addOnFailureListener { e -> LiveState.onError("OCR失敗: ${e.javaClass.simpleName}: ${e.message ?: "詳細不明"}") }
                 .addOnCompleteListener {
                     frame.recycle()
                     processing.set(false)
                 }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             processing.set(false)
-            main.post { LiveState.onError() }
+            main.post { LiveState.onError("画像取得失敗: ${e.javaClass.simpleName}: ${e.message ?: "詳細不明"}") }
         } finally {
             image.close()
         }
