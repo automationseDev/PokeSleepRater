@@ -3,6 +3,12 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+// CI supplies an unchanged signing key through GitHub Actions Secrets.
+// Never commit the keystore or passwords into this public repository.
+val stableSigningFile = System.getenv("PSR_SIGNING_FILE")
+val stableSigningPassword = System.getenv("PSR_SIGNING_PASSWORD")
+val stableSigningReady = !stableSigningFile.isNullOrBlank() && !stableSigningPassword.isNullOrBlank()
+
 android {
     namespace = "dev.automationse.pokesleeprater"
     compileSdk = 35
@@ -10,11 +16,30 @@ android {
         applicationId = "dev.automationse.pokesleeprater"
         minSdk = 30
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.2.1"
+        // 1000 + GitHub Actions run_number is used for signed CI releases.
+        // A larger versionCode allows in-place APK updates.
+        versionCode = providers.gradleProperty("ciVersionCode").orNull?.toIntOrNull() ?: 4
+        versionName = "0.3.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
-    buildTypes { release { isMinifyEnabled = false } }
+    signingConfigs {
+        if (stableSigningReady) {
+            create("stableRelease") {
+                storeFile = file(stableSigningFile!!)
+                storePassword = stableSigningPassword
+                keyAlias = "pokesleeprater"
+                keyPassword = stableSigningPassword
+            }
+        }
+    }
+    buildTypes {
+        getByName("release") {
+            isMinifyEnabled = false
+            if (stableSigningReady) {
+                signingConfig = signingConfigs.getByName("stableRelease")
+            }
+        }
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
