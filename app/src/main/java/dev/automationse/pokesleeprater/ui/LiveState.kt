@@ -213,10 +213,12 @@ object LiveState {
             pendingCount = 0
         }
 
-        if (!manualRole && detectedRole != null && detectedRole != role) {
-            role = detectedRole
-            roleDetected = true
-        } else if (!manualRole && detectedRole != null) {
+        if (!manualRole && detectedRole != null) {
+            if (detectedRole != role) {
+                role = detectedRole
+                report = Assessment.score(observation, role)
+                persistCurrent()
+            }
             roleDetected = true
         }
 
