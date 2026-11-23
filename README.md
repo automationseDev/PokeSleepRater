@@ -99,6 +99,18 @@ GitHub Variable `PSR_SIGNING_CERT_SHA256` を登録し、Actionsを手動起動�
 **新しい鍵への誤交換を防ぐため停止**します。ローカルの署名鍵ファイルとパスワードは
 両方とも安全な場所にオフラインでバックアップしてください。第三者と共有せず、公開リポジトリへ絶対にPushしないでください。
 
+### Androidから直接ダウンロード（Artifacts不要）
+
+署名付きAPKのビルドが成功すると、GitHub Actionsが**GitHub Releases**に
+`PokeSleepRater.apk` を自動公開します。GitHub ActionsのArtifactsではファイル名が
+クリックできないAndroidブラウザもあるため、以下の**直接ダウンロードURL**を使用してください。
+
+https://github.com/automationseDev/PokeSleepRater/releases/latest/download/PokeSleepRater.apk
+
+公開に成功するまでは404になる場合があります。GitHubの公開リポジトリからAPKを
+取得できるため、ログイン済みのブラウザでArtifactsを操作する必要がありません。
+APKは以前と同じ固定署名鍵で署名され、通常の更新はアンインストール不要です。
+
 ### 更新・インストール
 
 GitHub Actions → `Android CI and Signed APK` → 成功した最新の実行 →
