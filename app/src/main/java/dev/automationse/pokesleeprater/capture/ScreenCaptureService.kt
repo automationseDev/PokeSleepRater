@@ -25,7 +25,10 @@ import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
 import android.view.Gravity
+import android.view.View
 import android.view.WindowManager
+import android.widget.Button
+import android.widget.LinearLayout
 import android.widget.TextView
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
@@ -52,7 +55,11 @@ class ScreenCaptureService : Service() {
     private var thread: HandlerThread? = null
     private var worker: Handler? = null
     private var lastFrame = 0L
-    private var overlay: TextView? = null
+    private var overlay: View? = null
+    private var overlayToggle: TextView? = null
+    private var overlaySummary: TextView? = null
+    private var overlayPanel: LinearLayout? = null
+    private var showPrevious = false
     private var stopped = false
     private var width = 0
     private var height = 0
@@ -63,6 +70,10 @@ class ScreenCaptureService : Service() {
         override fun onCapturedContentResize(newWidth: Int, newHeight: Int) {
             main.post { resizeCapture(newWidth, newHeight) }
         }
+    }
+    override fun onCreate() {
+        super.onCreate()
+        LiveState.initialize(applicationContext)
     }
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -178,40 +189,131 @@ class ScreenCaptureService : Service() {
         padded.recycle()
         return cropped
     }
+    private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
+
+    /** A touchable, compact bubble; controls appear only on tap. */
     private fun addOverlayIfAllowed() {
         if (!Settings.canDrawOverlays(this)) return
-        val text = TextView(this).apply {
-            this.text = "PokeSleep Rater · 読み取り中"
-            setTextColor(Color.WHITE)
-            textSize = 13f
-            setPadding(18, 12, 18, 12)
-            background = GradientDrawable().apply {
-                setColor(Color.argb(220, 19, 27, 40))
-                cornerRadius = 18f
-            }
-            maxWidth = (resources.displayMetrics.widthPixels * .72).toInt()
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.END
         }
+        val bubble = TextView(this).apply {
+            text = "◉"
+            textSize = 18f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            setPadding(dp(15), dp(11), dp(15), dp(11))
+            background = GradientDrawable().apply {
+                setColor(Color.argb(245, 30, 70, 119))
+                cornerRadius = dp(28).toFloat()
+            }
+            contentDescription = "PokeSleep Raterを開く"
+        }
+        root.addView(bubble)
+
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            background = GradientDrawable().apply {
+                setColor(Color.argb(246, 21, 31, 48))
+                cornerRadius = dp(15).toFloat()
+            }
+        }
+        val panelParams = LinearLayout.LayoutParams(dp(246), LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(7)
+        }
+        root.addView(panel, panelParams)
+
+        val summary = TextView(this).apply {
+            setTextColor(Color.WHITE)
+            textSize = 14f
+            setPadding(0, 0, 0, dp(8))
+        }
+        panel.addView(summary)
+
+        fun action(label: String, click: () -> Unit) {
+            val button = Button(this).apply {
+                text = label
+                textSize = 12f
+                isAllCaps = false
+                setOnClickListener { click() }
+            }
+            panel.addView(button, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        }
+        action("現在の評価を見る") {
+            showPrevious = false
+            updateOverlay()
+        }
+        action("保存して次のポケモン") {
+            LiveState.saveAndNext()
+            showPrevious = false
+            updateOverlay()
+        }
+        action("前回の評価を見る") {
+            showPrevious = true
+            updateOverlay()
+        }
+        action("同種・同条件でも再開") {
+            LiveState.startAnyway()
+            showPrevious = false
+            updateOverlay()
+        }
+        action("閉じる") {
+            panel.visibility = View.GONE
+            bubble.contentDescription = "PokeSleep Raterを開く"
+        }
+        bubble.setOnClickListener {
+            panel.visibility = if (panel.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+            bubble.contentDescription = if (panel.visibility == View.VISIBLE) "評価パネルを閉じる"
+                else "PokeSleep Raterを開く"
+            updateOverlay()
+        }
+
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_SECURE,
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.END
-            x = 12
-            y = 84
+            x = dp(10)
+            y = dp(100)
         }
         try {
-            windowManager.addView(text, params)
-            overlay = text
-        } catch (_: Exception) { /* 権限なしでも解析は可能 */ }
+            windowManager.addView(root, params)
+            overlay = root
+            overlayToggle = bubble
+            overlayPanel = panel
+            overlaySummary = summary
+            updateOverlay()
+        } catch (e: Exception) {
+            LiveState.onError("フローティング表示の作成に失敗: ${e.message ?: "不明"}")
+        }
     }
+
     private fun updateOverlay() {
-        val status = LiveState.report.oneLine
-        val hint = LiveState.report.details.firstOrNull() ?: "画面を読み取っています"
-        overlay?.text = "PokeSleep Rater  ${LiveState.role.label}\n$status\n$hint"
+        val name = LiveState.pokemonName ?: "名前を解析中"
+        val grade = LiveState.report.grade
+        overlayToggle?.text = if (LiveState.report.score != null) "◉ $grade" else "◉"
+        if (showPrevious) {
+            val last = LiveState.lastFinished()
+            overlaySummary?.text = if (last == null) {
+                "保存済みの評価はまだありません"
+            } else {
+                "前回の評価\n${last.pokemonName}\n${last.grade} ${last.score}点 / 100\n" +
+                    "${last.nature ?: "性格未取得"} / ${last.role.label}得意\n" +
+                    "${last.slots.joinToString("、") { it.name }.take(130)}"
+            }
+        } else {
+            overlaySummary?.text = "$name / ${LiveState.role.label}得意" +
+                if (LiveState.report.score == null) "\n評価待ち\n${LiveState.status.take(75)}"
+                else "\n${LiveState.report.oneLine}\n${LiveState.report.progress.take(90)}"
+        }
     }
     private fun finishCapture() {
         if (stopped) return
@@ -223,6 +325,9 @@ class ScreenCaptureService : Service() {
         reader = null
         overlay?.let { try { windowManager.removeView(it) } catch (_: Exception) {} }
         overlay = null
+        overlayToggle = null
+        overlaySummary = null
+        overlayPanel = null
         projection?.let { current ->
             current.unregisterCallback(callback)
             current.stop()
