@@ -348,8 +348,17 @@ class ScreenCaptureService : Service() {
 
     private fun updateOverlay() {
         val name = LiveState.pokemonName ?: "名前を解析中"
-        val grade = LiveState.report.grade
-        overlayToggle?.text = if (LiveState.report.score != null) "◉ $grade" else "◉"
+        val progress = LiveState.progress
+        overlayToggle?.text = when {
+            progress.complete -> "✓ 完了"
+            LiveState.report.score != null -> "◉ ${progress.recognizedGroups}/5"
+            else -> "◉ 解析"
+        }
+        overlayToggle?.background = GradientDrawable().apply {
+            setColor(if (progress.complete) Color.argb(245, 28, 118, 76)
+                else Color.argb(245, 30, 70, 119))
+            cornerRadius = dp(28).toFloat()
+        }
         if (showPrevious) {
             val last = LiveState.lastFinished()
             overlaySummary?.text = if (last == null) {
@@ -357,14 +366,22 @@ class ScreenCaptureService : Service() {
             } else {
                 "前回の評価\n${last.pokemonName}\n${last.grade} ${last.score}点 / 100\n" +
                     "${last.nature ?: "性格未取得"} / ${last.role.label}得意\n" +
-                    "${last.slots.joinToString("、") { it.name }.take(130)}"
+                    "食材：${last.ingredients.joinToString("・") { "Lv.${it.level} ${it.name}" }}\n" +
+                    "${last.slots.joinToString("、") { it.name }.take(120)}"
             }
         } else {
-            overlaySummary?.text = "$name / ${LiveState.role.label}得意" +
-                if (LiveState.report.score == null) "\n評価待ち\n${LiveState.status.take(75)}"
-                else "\n${LiveState.report.oneLine}\n" +
-                    LiveState.report.details.take(4).joinToString("\n") { "・$it" } +
-                    "\n${LiveState.report.progress.take(90)}"
+            val foods = LiveState.observation.ingredients
+                .sortedBy { it.level }
+                .joinToString("・") { "Lv.${it.level} ${it.name}" }
+            val progressText = if (progress.complete) {
+                "✓ 評価完了（暫定）・5項目取得済み"
+            } else {
+                "${progress.summary}\n${progress.guidance.take(140)}"
+            }
+            overlaySummary?.text = "$name / ${LiveState.role.label}得意\n$progressText\n" +
+                LiveState.report.oneLine +
+                (if (foods.isNotBlank()) "\n食材：$foods" else "") +
+                "\n" + LiveState.report.details.take(3).joinToString("\n") { "・$it" }
         }
     }
     private fun finishCapture() {
