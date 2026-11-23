@@ -77,7 +77,7 @@ object LiveState {
     }
 
     /** Manual correction for nicknamed Pokémon or missed name OCR. */
-    fun setPokemonName(value: String) {
+    fun correctPokemonName(value: String) {
         val name = value.trim().take(32)
         if (name.isBlank()) return
         pokemonName = name
