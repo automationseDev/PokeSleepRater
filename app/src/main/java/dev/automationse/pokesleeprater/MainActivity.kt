@@ -50,6 +50,7 @@ class MainActivity : ComponentActivity() {
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        LiveState.initialize(applicationContext)
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
@@ -82,6 +83,7 @@ private fun Home(
     overlayPermission: () -> Unit, overlayGranted: Boolean,
 ) {
     var showRaw by remember { mutableStateOf(false) }
+    var manualName by remember { mutableStateOf("") }
     val isOverlayGranted = overlayGranted
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
@@ -91,7 +93,22 @@ private fun Home(
         Text("Pokémon Sleepの画面を約2秒間隔でOCR解析し、画面上に暫定評価を重ねて表示します。")
         Text("状態：${LiveState.status}", style = MaterialTheme.typography.bodyMedium)
         HorizontalDivider()
-        Text("得意タイプ（試作版では手動指定）", style = MaterialTheme.typography.titleMedium)
+        Text("現在のポケモン：${LiveState.pokemonName ?: "自動認識待ち"}", style = MaterialTheme.typography.titleMedium)
+        Text("得意タイプ：${LiveState.role.label}（${if (LiveState.roleDetected) "画面から自動認識" else "手動・仮設定"}）")
+        Text("名前や得意タイプが画面で読めない場合は手動補正できます。")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(
+                value = manualName,
+                onValueChange = { manualName = it },
+                label = { Text("種族名またはニックネーム") },
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+            )
+            Button(onClick = {
+                LiveState.setPokemonName(manualName)
+                manualName = ""
+            }, enabled = manualName.isNotBlank()) { Text("設定") }
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Specialty.entries.forEach { type ->
                 FilterChip(
@@ -109,13 +126,29 @@ private fun Home(
             Button(onClick = start, enabled = !LiveState.capturing) { Text("画面解析を開始") }
             OutlinedButton(onClick = stop, enabled = LiveState.capturing) { Text("停止") }
         }
-        Text("開始後、Androidの画面共有確認で「画面全体」を選び、Pokémon Sleepに切り替えて性格・サブスキル画面を表示してください。")
+        Text("開始後、Androidの画面共有で「画面全体」を選択し、Pokémon Sleepの個体画面を開いてください。上部のフローティングアイコンをタップすると、評価・保存・次の個体・前回の評価を操作できます。")
         HorizontalDivider()
         Text("現在の評価", style = MaterialTheme.typography.titleMedium)
         Text(LiveState.report.oneLine, style = MaterialTheme.typography.headlineSmall)
         Text(LiveState.report.progress)
         LiveState.report.details.take(8).forEach { Text("・$it") }
-        OutlinedButton(onClick = { LiveState.reset() }) { Text("別の個体を評価するためにクリア") }
+        Button(onClick = { LiveState.saveAndNext() }) { Text("保存して次のポケモンへ") }
+        if (LiveState.waitingForNext) {
+            OutlinedButton(onClick = { LiveState.startAnyway() }) {
+                Text("同種・同条件でも評価を再開")
+            }
+        }
+        HorizontalDivider()
+        Text("評価履歴（自動保存・最新100件）", style = MaterialTheme.typography.titleMedium)
+        if (LiveState.history.isEmpty()) {
+            Text("評価結果を読み取ると、ここに保存されます。")
+        } else {
+            LiveState.history.take(12).forEach { record ->
+                Text("${record.pokemonName}  ${record.grade} ${record.score}点  " +
+                    "${record.role.label} / ${record.nature ?: "性格未確認"}  " +
+                    "スキル${record.slots.size}/5")
+            }
+        }
         HorizontalDivider()
         Text("診断", style = MaterialTheme.typography.titleSmall)
         Text("処理済みOCRフレーム：${LiveState.processedFrames}")
@@ -130,6 +163,7 @@ private fun Home(
         }
         if (showRaw) Text(LiveState.lastRecognizedText.ifEmpty { "まだOCR結果はありません" })
         Text("※独自の暫定評価です。種族固有性能・食材構成・ミント・Lv75/100の精密評価には未対応です。")
-        Text("※キャプチャ画像・OCRテキストは保存・送信しません。個体を切り替える前にクリアしてください。")
+        Text("※キャプチャ画像・OCRテキストは保存・送信しません。評価履歴（名前・性格・サブスキル・点数のみ）は端末内に保存します。")
+        Text("※ニックネームを付けた個体、同じ種族の個体切替は自動識別できない場合があります。その際は「保存して次へ」を使ってください。")
     }
 }
