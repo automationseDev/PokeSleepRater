@@ -19,7 +19,7 @@ android {
         // 1000 + GitHub Actions run_number is used for signed CI releases.
         // A larger versionCode allows in-place APK updates.
         versionCode = providers.gradleProperty("ciVersionCode").orNull?.toIntOrNull() ?: 4
-        versionName = "0.4.0"
+        versionName = "0.5.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     signingConfigs {
