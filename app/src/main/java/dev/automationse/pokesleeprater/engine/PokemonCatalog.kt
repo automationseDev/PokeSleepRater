@@ -1045,9 +1045,13 @@ object PokemonCatalog {
             val cleaned = line.replace("　", "").replace(" ", "").trim()
                 .removePrefix("名前：").removePrefix("名前:")
                 .removePrefix("ポケモン：").removePrefix("ポケモン:")
-                .replace(trailingLevel, "").replace(gender, "")
+                .replace(trailingLevel, "")
                 .trimEnd('・', '。', ':', '：')
-            cleaned.takeIf { it in names }
+            when {
+                cleaned in names -> cleaned
+                cleaned.replace(gender, "") in names -> cleaned.replace(gender, "")
+                else -> null
+            }
         }.distinct().take(2).toList()
         return matches.singleOrNull()
     }
