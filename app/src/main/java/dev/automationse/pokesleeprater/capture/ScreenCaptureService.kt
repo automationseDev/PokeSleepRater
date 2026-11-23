@@ -25,6 +25,8 @@ import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
 import android.view.Gravity
+import android.view.MotionEvent
+import android.view.ViewConfiguration
 import android.view.View
 import android.view.WindowManager
 import android.widget.Button
@@ -283,6 +285,46 @@ class ScreenCaptureService : Service() {
             gravity = Gravity.TOP or Gravity.END
             x = dp(10)
             y = dp(100)
+        }
+        val touchSlop = ViewConfiguration.get(this).scaledTouchSlop
+        var touchX = 0f
+        var touchY = 0f
+        var originX = 0
+        var originY = 0
+        var dragging = false
+        bubble.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    touchX = event.rawX
+                    touchY = event.rawY
+                    originX = params.x
+                    originY = params.y
+                    dragging = false
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val deltaX = event.rawX - touchX
+                    val deltaY = event.rawY - touchY
+                    if (!dragging && (kotlin.math.abs(deltaX) > touchSlop ||
+                            kotlin.math.abs(deltaY) > touchSlop)) dragging = true
+                    if (dragging) {
+                        val maxX = (resources.displayMetrics.widthPixels - dp(42)).coerceAtLeast(0)
+                        val maxY = (resources.displayMetrics.heightPixels - dp(65)).coerceAtLeast(0)
+                        params.x = (originX - deltaX).toInt().coerceIn(0, maxX)
+                        params.y = (originY + deltaY).toInt().coerceIn(0, maxY)
+                        if (overlay != null) {
+                            runCatching { windowManager.updateViewLayout(root, params) }
+                        }
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    if (!dragging) bubble.performClick()
+                    true
+                }
+                MotionEvent.ACTION_CANCEL -> true
+                else -> false
+            }
         }
         try {
             windowManager.addView(root, params)
