@@ -23,6 +23,9 @@ import androidx.compose.ui.unit.dp
 import dev.automationse.pokesleeprater.capture.ScreenCaptureService
 import dev.automationse.pokesleeprater.engine.Specialty
 import dev.automationse.pokesleeprater.ui.LiveState
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
     private var overlayEnabled by mutableStateOf(false)
@@ -84,6 +87,7 @@ private fun Home(
 ) {
     var showRaw by remember { mutableStateOf(false) }
     var manualName by remember { mutableStateOf("") }
+    var showAllHistory by remember { mutableStateOf(false) }
     val isOverlayGranted = overlayGranted
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
@@ -143,10 +147,17 @@ private fun Home(
         if (LiveState.history.isEmpty()) {
             Text("評価結果を読み取ると、ここに保存されます。")
         } else {
-            LiveState.history.take(12).forEach { record ->
+            val formatter = remember { SimpleDateFormat("MM/dd HH:mm", Locale.JAPAN) }
+            LiveState.history.take(if (showAllHistory) 100 else 12).forEach { record ->
+                val timestamp = formatter.format(Date(record.savedAt))
                 Text("${record.pokemonName}  ${record.grade} ${record.score}点  " +
                     "${record.role.label} / ${record.nature ?: "性格未確認"}  " +
-                    "スキル${record.slots.size}/5")
+                    "スキル${record.slots.size}/5  $timestamp")
+            }
+            if (LiveState.history.size > 12) {
+                TextButton(onClick = { showAllHistory = !showAllHistory }) {
+                    Text(if (showAllHistory) "最新12件だけ表示" else "すべての履歴を見る（${LiveState.history.size}件）")
+                }
             }
         }
         HorizontalDivider()
