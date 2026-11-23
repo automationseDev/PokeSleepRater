@@ -123,7 +123,7 @@ object LiveState {
     fun reset() = saveAndNext()
 
     fun lastFinished(): SavedAssessment? =
-        history.firstOrNull { it.id != sessionId } ?: history.firstOrNull()
+        history.firstOrNull { it.id != sessionId }
 
     private fun persistCurrent() {
         val score = report.score ?: return
@@ -200,11 +200,11 @@ object LiveState {
             if (pendingCount < 2) {
                 status = "ポケモン名を確認中：$detected"
             } else {
-            if (pokemonName != null) {
-                switchToRecognizedPokemon(detected)
-            } else {
-                pokemonName = detected
-            }
+                if (pokemonName != null) {
+                    switchToRecognizedPokemon(detected)
+                } else {
+                    pokemonName = detected
+                }
                 pendingName = null
                 pendingCount = 0
             }
