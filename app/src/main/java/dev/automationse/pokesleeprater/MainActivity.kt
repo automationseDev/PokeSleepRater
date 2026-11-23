@@ -16,12 +16,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.automationse.pokesleeprater.capture.ScreenCaptureService
 import dev.automationse.pokesleeprater.engine.Specialty
+import dev.automationse.pokesleeprater.engine.IngredientParser
 import dev.automationse.pokesleeprater.ui.LiveState
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -88,6 +90,7 @@ private fun Home(
     var showRaw by remember { mutableStateOf(false) }
     var manualName by remember { mutableStateOf("") }
     var showAllHistory by remember { mutableStateOf(false) }
+    val ingredientInputs = remember { mutableStateMapOf(1 to "", 30 to "", 60 to "") }
     val isOverlayGranted = overlayGranted
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
@@ -132,10 +135,38 @@ private fun Home(
         }
         Text("開始後、Androidの画面共有で「画面全体」を選択し、Pokémon Sleepの個体画面を開いてください。上部のフローティングアイコンをタップすると、評価・保存・次の個体・前回の評価を操作できます。")
         HorizontalDivider()
-        Text("現在の評価", style = MaterialTheme.typography.titleMedium)
-        Text(LiveState.report.oneLine, style = MaterialTheme.typography.headlineSmall)
+        Text("読み取り進捗：${LiveState.progress.summary}", style = MaterialTheme.typography.titleMedium,
+            color = if (LiveState.progress.complete) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurface)
+        Text(LiveState.progress.guidance)
+        Text("現在の評価：${LiveState.report.oneLine}", style = MaterialTheme.typography.headlineSmall)
         Text(LiveState.report.progress)
         LiveState.report.details.take(8).forEach { Text("・$it") }
+
+        HorizontalDivider()
+        Text("食材構成（Lv.1 / 30 / 60）", style = MaterialTheme.typography.titleMedium)
+        Text("画面をスクロールして食材名をOCRで読み取ります。アイコンだけで名前が読めない場合は手動入力できます。")
+        IngredientParser.ingredientLevels.forEach { level ->
+            val value = LiveState.observation.ingredients.firstOrNull { it.level == level }?.name
+            Text("Lv.$level：${value ?: "未取得"}")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = ingredientInputs[level].orEmpty(),
+                    onValueChange = { ingredientInputs[level] = it },
+                    label = { Text("Lv.$level 食材名") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                )
+                Button(
+                    onClick = {
+                        LiveState.correctIngredient(level, ingredientInputs[level].orEmpty())
+                        ingredientInputs[level] = ""
+                    },
+                    enabled = ingredientInputs[level]?.isNotBlank() == true,
+                ) { Text("設定") }
+            }
+        }
+        Text("※評価完了は必要情報の取得完了を意味します。食材構成や種族固有性能を数値化した精密スコアではありません。")
         Button(onClick = { LiveState.saveAndNext() }) { Text("保存して次のポケモンへ") }
         if (LiveState.waitingForNext) {
             OutlinedButton(onClick = { LiveState.startAnyway() }) {
@@ -152,7 +183,7 @@ private fun Home(
                 val timestamp = formatter.format(Date(record.savedAt))
                 Text("${record.pokemonName}  ${record.grade} ${record.score}点  " +
                     "${record.role.label} / ${record.nature ?: "性格未確認"}  " +
-                    "スキル${record.slots.size}/5  $timestamp")
+                    "スキル${record.slots.size}/5 / 食材${record.ingredients.size}/3  $timestamp")
             }
             if (LiveState.history.size > 12) {
                 TextButton(onClick = { showAllHistory = !showAllHistory }) {
@@ -173,8 +204,8 @@ private fun Home(
             Text(if (showRaw) "読み取りテキストを隠す" else "読み取りテキストを表示")
         }
         if (showRaw) Text(LiveState.lastRecognizedText.ifEmpty { "まだOCR結果はありません" })
-        Text("※独自の暫定評価です。種族固有性能・食材構成・ミント・Lv75/100の精密評価には未対応です。")
-        Text("※キャプチャ画像・OCRテキストは保存・送信しません。評価履歴（名前・性格・サブスキル・点数のみ）は端末内に保存します。")
+        Text("※独自の暫定評価です。食材構成は取得・保存に対応しましたが、食材構成・種族固有性能・ミントを点数へ反映する精密評価は未対応です。")
+        Text("※画像・生OCRテキストは保存・送信しません。評価履歴（名前・得意タイプ・性格・サブスキル・食材・点数）は端末内に保存します。")
         Text("※ニックネームを付けた個体、同じ種族の個体切替は自動識別できない場合があります。その際は「保存して次へ」を使ってください。")
     }
 }
