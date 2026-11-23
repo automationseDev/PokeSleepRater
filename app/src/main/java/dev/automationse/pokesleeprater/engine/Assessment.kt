@@ -4,10 +4,12 @@ enum class Specialty(val label: String) {
     BERRIES("きのみ"), INGREDIENTS("食材"), SKILLS("スキル")
 }
 data class SkillSlot(val level: Int, val name: String)
+data class IngredientSlot(val level: Int, val name: String)
 data class Observation(
     val nature: String? = null,
     val slots: List<SkillSlot> = emptyList(),
     val seenAtLeastOnce: Boolean = false,
+    val ingredients: List<IngredientSlot> = emptyList(),
 ) {
     fun merge(other: Observation): Observation = copy(
         nature = other.nature ?: nature,
@@ -16,6 +18,10 @@ data class Observation(
             .let { all -> all.filter { it.level != 0 || all.none { known -> known.level != 0 && known.name == it.name } } }
             .sortedBy { if (it.level == 0) 101 else it.level },
         seenAtLeastOnce = seenAtLeastOnce || other.seenAtLeastOnce,
+        ingredients = (ingredients + other.ingredients)
+            .filter { it.level in IngredientParser.ingredientLevels }
+            .distinctBy { it.level }
+            .sortedBy { it.level },
     )
 }
 data class ScoreReport(
@@ -76,8 +82,8 @@ object Assessment {
                 10 -> 1.0
                 25 -> 0.9
                 50 -> 0.65
-                75 -> 0.35
-                100 -> 0.2
+                70 -> 0.35
+                80 -> 0.2
                 else -> 0.55
             }
             val points = impact * factor
@@ -104,8 +110,13 @@ object Assessment {
         }
         val missing = mutableListOf<String>()
         if (observation.nature == null) missing += "性格"
-        if (observation.slots.size < 5) missing += "サブスキル(${observation.slots.size}/5)"
-        missing += "食材構成・種族固有性能"
+        if (observation.slots.map { it.level }.distinct().count { it in listOf(10,25,50,70,80) } < 5) {
+            missing += "サブスキル"
+        }
+        if (observation.ingredients.map { it.level }.distinct().count { it in IngredientParser.ingredientLevels } < 3) {
+            missing += "食材"
+        }
+        missing += "種族固有性能"
         return ScoreReport(
             total, grade, remarks.ifEmpty { listOf("該当する加点スキルは未認識") },
             "暫定評価 / 未反映：${missing.joinToString("、")}",
