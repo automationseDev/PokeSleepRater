@@ -1,18 +1,28 @@
 package dev.automationse.pokesleeprater.ui
 
+import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import dev.automationse.pokesleeprater.engine.Assessment
 import dev.automationse.pokesleeprater.engine.Observation
 import dev.automationse.pokesleeprater.engine.OcrParser
+import dev.automationse.pokesleeprater.engine.PokemonCatalog
 import dev.automationse.pokesleeprater.engine.Specialty
+import java.util.UUID
 
-/** 画面画像・OCRテキストは外部へ送信しない。永続化もしない。 */
+/**
+ * Session-scoped OCR state. Persist only structured, extracted evaluations.
+ * Raw OCR text and screenshots remain transient and never leave the device.
+ */
 object LiveState {
     var capturing by mutableStateOf(false)
         private set
     var role by mutableStateOf(Specialty.BERRIES)
+        private set
+    var roleDetected by mutableStateOf(false)
+        private set
+    var pokemonName by mutableStateOf<String?>(null)
         private set
     var observation by mutableStateOf(Observation())
         private set
@@ -26,49 +36,198 @@ object LiveState {
         private set
     var lastError by mutableStateOf("")
         private set
+    var history by mutableStateOf<List<SavedAssessment>>(emptyList())
+        private set
+    var waitingForNext by mutableStateOf(false)
+        private set
+
+    private var context: Context? = null
+    private var sessionId = UUID.randomUUID().toString()
+    private var manualRole = false
+    private var manualName = false
+    private var pendingName: String? = null
+    private var pendingCount = 0
+    private var previousName: String? = null
+    private var previousObservation = Observation()
+
+    fun initialize(applicationContext: Context) {
+        if (context != null) return
+        context = applicationContext.applicationContext
+        history = AssessmentHistory.load(applicationContext)
+    }
+
     fun updateCaptureState(value: Boolean) {
         capturing = value
         if (value) {
             processedFrames = 0
             lastError = ""
-            status = "画面共有を開始しました。OCR結果を待っています"
+            status = "画面共有中・ポケモン画面を待っています"
         } else {
+            persistCurrent()
             status = if (lastError.isNotBlank()) "エラーで停止" else "停止中"
         }
     }
+
     fun chooseRole(value: Specialty) {
         role = value
+        roleDetected = false
+        manualRole = true
         report = Assessment.score(observation, role)
+        persistCurrent()
     }
-    fun reset() {
+
+    /** Manual correction for nicknamed Pokémon or missed name OCR. */
+    fun setPokemonName(value: String) {
+        val name = value.trim().take(32)
+        if (name.isBlank()) return
+        pokemonName = name
+        manualName = true
+        pendingName = null
+        pendingCount = 0
+        persistCurrent()
+    }
+
+    private fun resetCurrent() {
+        pokemonName = null
         observation = Observation()
+        role = Specialty.BERRIES
+        roleDetected = false
+        manualRole = false
+        manualName = false
+        pendingName = null
+        pendingCount = 0
         lastRecognizedText = ""
-        processedFrames = 0
-        lastError = ""
         report = Assessment.score(observation, role)
-        status = if (capturing) "画面を読み取り中" else "準備完了"
+        sessionId = UUID.randomUUID().toString()
     }
+
+    /** Save the finished assessment and wait for a visibly different individual. */
+    fun saveAndNext() {
+        persistCurrent()
+        previousName = pokemonName
+        previousObservation = observation
+        waitingForNext = true
+        resetCurrent()
+        lastError = ""
+        status = "前の評価を保存しました。次のポケモンを表示してください"
+    }
+
+    /** Explicit manual skip when OCR cannot determine that the screen changed. */
+    fun startAnyway() {
+        waitingForNext = false
+        previousName = null
+        previousObservation = Observation()
+        status = "新しい個体を読み取り中"
+    }
+
+    fun reset() = saveAndNext()
+
+    fun lastFinished(): SavedAssessment? =
+        history.firstOrNull { it.id != sessionId } ?: history.firstOrNull()
+
+    private fun persistCurrent() {
+        val score = report.score ?: return
+        val record = SavedAssessment(
+            id = sessionId,
+            pokemonName = pokemonName ?: "名前未判定",
+            role = role,
+            nature = observation.nature,
+            slots = observation.slots,
+            score = score,
+            grade = report.grade,
+            savedAt = System.currentTimeMillis(),
+        )
+        val old = history.firstOrNull { it.id == sessionId }
+        if (old != null &&
+            old.pokemonName == record.pokemonName &&
+            old.role == record.role &&
+            old.nature == record.nature &&
+            old.slots == record.slots &&
+            old.score == record.score
+        ) return
+        history = (listOf(record) + history.filterNot { it.id == sessionId }).take(100)
+        context?.let { AssessmentHistory.save(it, history) }
+    }
+
+    private fun switchToRecognizedPokemon(name: String) {
+        persistCurrent()
+        resetCurrent()
+        pokemonName = name
+        waitingForNext = false
+        previousName = null
+        previousObservation = Observation()
+        status = "ポケモンを自動検出：$name"
+    }
+
     fun onRecognizedText(raw: String) {
         processedFrames += 1
         lastRecognizedText = raw.take(1500)
         if (raw.isBlank()) {
-            status = "映像取得中：文字を認識できません（画面の共有対象を確認）"
+            status = "映像取得中：文字を認識できません"
             return
         }
-        val hint = listOf("サブスキル", "おてつだい", "スキル確率", "きのみ", "食材確率", "性格")
-        if (hint.none { raw.contains(it) }) {
-            status = "映像取得中：性格・サブスキルが見つかりません"
-            return
-        }
+        val detected = PokemonCatalog.detect(raw)
         val parsed = OcrParser.parse(raw)
+        val detectedRole = PokemonCatalog.detectSpecialty(raw)
+
+        if (waitingForNext) {
+            val differentSpecies = detected != null && detected != previousName
+            val differentNature = parsed.nature != null &&
+                previousObservation.nature != null &&
+                parsed.nature != previousObservation.nature
+            val differentSkills = parsed.slots.isNotEmpty() &&
+                previousObservation.slots.isNotEmpty() &&
+                parsed.slots.any { it !in previousObservation.slots }
+            if (!differentSpecies && !differentNature && !differentSkills) {
+                status = "次の個体の画面を待機中（同種・同条件なら強制再開）"
+                return
+            }
+            waitingForNext = false
+        }
+
+        // Two consecutive OCR reads prevent accidental name switching on menus.
+        if (!manualName && detected != null && detected != pokemonName) {
+            if (detected == pendingName) pendingCount++ else {
+                pendingName = detected
+                pendingCount = 1
+            }
+            if (pendingCount < 2) {
+                status = "ポケモン名を確認中：$detected"
+                return
+            }
+            if (pokemonName != null) {
+                switchToRecognizedPokemon(detected)
+            } else {
+                pokemonName = detected
+            }
+            pendingName = null
+            pendingCount = 0
+        } else if (detected == pokemonName) {
+            pendingName = null
+            pendingCount = 0
+        }
+
+        if (!manualRole && detectedRole != null && detectedRole != role) {
+            role = detectedRole
+            roleDetected = true
+        } else if (!manualRole && detectedRole != null) {
+            roleDetected = true
+        }
+
         if (parsed.seenAtLeastOnce) {
-            observation = observation.merge(parsed)
-            report = Assessment.score(observation, role)
-            status = "OCR取得済み / 同じ個体の別画面も読み取れます"
+            val updated = observation.merge(parsed)
+            if (updated != observation || detectedRole != null || pokemonName != null) {
+                observation = updated
+                report = Assessment.score(observation, role)
+                persistCurrent()
+            }
+            status = "${pokemonName ?: "名前未判定"}：評価取得中（${observation.slots.size}/5スキル）"
         } else {
-            status = "ポケモン画面を検知 / 読み取り待ち"
+            status = if (pokemonName == null) "ポケモン名・能力を認識待ち" else
+                "$pokemonName：性格・サブスキル画面を表示してください"
         }
     }
+
     fun onError(reason: String = "画面取得またはOCRでエラーが発生しました") {
         lastError = reason.take(300)
         status = "エラー：$lastError"
