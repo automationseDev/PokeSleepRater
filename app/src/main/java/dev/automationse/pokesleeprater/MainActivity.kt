@@ -105,7 +105,7 @@ private fun Home(
                 modifier = Modifier.weight(1f),
             )
             Button(onClick = {
-                LiveState.setPokemonName(manualName)
+                LiveState.correctPokemonName(manualName)
                 manualName = ""
             }, enabled = manualName.isNotBlank()) { Text("設定") }
         }
