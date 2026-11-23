@@ -94,7 +94,7 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
-          name: PokeSleepRater-signed-update-v0.3.0-${{ github.run_number }}
+          name: PokeSleepRater-signed-update-v0.4.0-${{ github.run_number }}
           path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 30
