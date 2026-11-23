@@ -23,7 +23,8 @@ object OcrParser {
         val nature = natures.firstOrNull { n -> lines.any { it.contains(n) } }
         val slots = mutableListOf<SkillSlot>()
         lines.forEachIndexed { index, line ->
-            val candidates = listOfNotNull(lines.getOrNull(index - 1), line, lines.getOrNull(index + 1))
+            // A level on the same OCR line is more reliable than an adjacent slot's label.
+            val candidates = listOfNotNull(line, lines.getOrNull(index - 1), lines.getOrNull(index + 1))
             for (skill in skills) {
                 if (!line.contains(skill)) continue
                 val parsedLevel = candidates.firstNotNullOfOrNull {
