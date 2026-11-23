@@ -2,6 +2,7 @@ package dev.automationse.pokesleeprater.ui
 
 import android.content.Context
 import dev.automationse.pokesleeprater.engine.SkillSlot
+import dev.automationse.pokesleeprater.engine.IngredientSlot
 import dev.automationse.pokesleeprater.engine.Specialty
 import org.json.JSONArray
 import org.json.JSONObject
@@ -16,6 +17,7 @@ data class SavedAssessment(
     val score: Int,
     val grade: String,
     val savedAt: Long,
+    val ingredients: List<IngredientSlot> = emptyList(),
 )
 
 object AssessmentHistory {
@@ -44,6 +46,17 @@ object AssessmentHistory {
                             }
                         }
                     }
+                    val foods = record.optJSONArray("ingredients") ?: JSONArray()
+                    val ingredients = buildList {
+                        for (index in 0 until foods.length()) {
+                            val item = foods.optJSONObject(index) ?: continue
+                            val level = item.optInt("level", 0)
+                            val name = item.optString("name", "").take(80)
+                            if (level in listOf(1, 30, 60) && name.isNotBlank()) {
+                                add(IngredientSlot(level, name))
+                            }
+                        }
+                    }
                     val id = record.optString("id")
                     if (id.isBlank()) continue
                     add(SavedAssessment(
@@ -55,6 +68,7 @@ object AssessmentHistory {
                         score = record.optInt("score").coerceIn(0, 100),
                         grade = record.optString("grade", "—"),
                         savedAt = record.optLong("savedAt", 0L),
+                        ingredients = ingredients,
                     ))
                 }
             }
@@ -71,12 +85,17 @@ object AssessmentHistory {
             for (skill in entry.slots) {
                 skillArray.put(JSONObject().put("level", skill.level).put("name", skill.name))
             }
+            val ingredientArray = JSONArray()
+            for (item in entry.ingredients) {
+                ingredientArray.put(JSONObject().put("level", item.level).put("name", item.name))
+            }
             array.put(JSONObject()
                 .put("id", entry.id)
                 .put("pokemon", entry.pokemonName)
                 .put("role", entry.role.name)
                 .put("nature", entry.nature ?: "")
                 .put("skills", skillArray)
+                .put("ingredients", ingredientArray)
                 .put("score", entry.score)
                 .put("grade", entry.grade)
                 .put("savedAt", entry.savedAt))
