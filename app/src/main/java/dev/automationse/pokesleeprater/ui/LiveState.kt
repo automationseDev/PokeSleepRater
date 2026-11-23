@@ -191,17 +191,23 @@ object LiveState {
                 pendingName = detected
                 pendingCount = 1
             }
-            if (pendingCount < 2) {
-                status = "ポケモン名を確認中：$detected"
+            if (pendingCount < 2 && pokemonName != null) {
+                // A possible switch must not mix the next Pokémon's stats into this one.
+                status = "次のポケモン名を確認中：$detected"
                 return
             }
+            // For the very first Pokémon, retain its skills while confirming the name.
+            if (pendingCount < 2) {
+                status = "ポケモン名を確認中：$detected"
+            } else {
             if (pokemonName != null) {
                 switchToRecognizedPokemon(detected)
             } else {
                 pokemonName = detected
             }
-            pendingName = null
-            pendingCount = 0
+                pendingName = null
+                pendingCount = 0
+            }
         } else if (detected == pokemonName) {
             pendingName = null
             pendingCount = 0
