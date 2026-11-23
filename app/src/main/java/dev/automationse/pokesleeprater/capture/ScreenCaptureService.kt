@@ -31,6 +31,7 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
@@ -60,7 +61,7 @@ class ScreenCaptureService : Service() {
     private var overlay: View? = null
     private var overlayToggle: TextView? = null
     private var overlaySummary: TextView? = null
-    private var overlayPanel: LinearLayout? = null
+    private var overlayPanel: ScrollView? = null
     private var showPrevious = false
     private var stopped = false
     private var width = 0
@@ -216,17 +217,24 @@ class ScreenCaptureService : Service() {
 
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            visibility = View.GONE
             setPadding(dp(12), dp(12), dp(12), dp(12))
             background = GradientDrawable().apply {
                 setColor(Color.argb(246, 21, 31, 48))
                 cornerRadius = dp(15).toFloat()
             }
         }
-        val panelParams = LinearLayout.LayoutParams(dp(246), LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+        val panelScroll = ScrollView(this).apply {
+            visibility = View.GONE
+            isVerticalScrollBarEnabled = true
+            addView(panel)
+        }
+        val anchorY = minOf(dp(90), resources.displayMetrics.heightPixels / 6)
+        val availableHeight = (resources.displayMetrics.heightPixels - anchorY - dp(70))
+            .coerceAtLeast(dp(110))
+        val panelParams = LinearLayout.LayoutParams(dp(246), minOf(dp(310), availableHeight)).apply {
             topMargin = dp(7)
         }
-        root.addView(panel, panelParams)
+        root.addView(panelScroll, panelParams)
 
         val summary = TextView(this).apply {
             setTextColor(Color.WHITE)
@@ -264,12 +272,12 @@ class ScreenCaptureService : Service() {
             updateOverlay()
         }
         action("閉じる") {
-            panel.visibility = View.GONE
+            panelScroll.visibility = View.GONE
             bubble.contentDescription = "PokeSleep Raterを開く"
         }
         bubble.setOnClickListener {
-            panel.visibility = if (panel.visibility == View.VISIBLE) View.GONE else View.VISIBLE
-            bubble.contentDescription = if (panel.visibility == View.VISIBLE) "評価パネルを閉じる"
+            panelScroll.visibility = if (panelScroll.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+            bubble.contentDescription = if (panelScroll.visibility == View.VISIBLE) "評価パネルを閉じる"
                 else "PokeSleep Raterを開く"
             updateOverlay()
         }
@@ -284,7 +292,7 @@ class ScreenCaptureService : Service() {
         ).apply {
             gravity = Gravity.TOP or Gravity.END
             x = dp(10)
-            y = dp(100)
+            y = anchorY
         }
         val touchSlop = ViewConfiguration.get(this).scaledTouchSlop
         var touchX = 0f
@@ -330,7 +338,7 @@ class ScreenCaptureService : Service() {
             windowManager.addView(root, params)
             overlay = root
             overlayToggle = bubble
-            overlayPanel = panel
+            overlayPanel = panelScroll
             overlaySummary = summary
             updateOverlay()
         } catch (e: Exception) {
@@ -354,7 +362,9 @@ class ScreenCaptureService : Service() {
         } else {
             overlaySummary?.text = "$name / ${LiveState.role.label}得意" +
                 if (LiveState.report.score == null) "\n評価待ち\n${LiveState.status.take(75)}"
-                else "\n${LiveState.report.oneLine}\n${LiveState.report.progress.take(90)}"
+                else "\n${LiveState.report.oneLine}\n" +
+                    LiveState.report.details.take(4).joinToString("\n") { "・$it" } +
+                    "\n${LiveState.report.progress.take(90)}"
         }
     }
     private fun finishCapture() {
