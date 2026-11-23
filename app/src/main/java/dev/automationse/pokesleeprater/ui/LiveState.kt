@@ -280,7 +280,8 @@ object LiveState {
         } else {
             pendingNature = null
             pendingNatureCount = 0
-            if (detectedName == pokemonName) {
+            if (detectedName == null || detectedName == pokemonName) {
+                // Name changes require CONSECUTIVE OCR frames, not separated matches.
                 pendingName = null
                 pendingNameCount = 0
             }
