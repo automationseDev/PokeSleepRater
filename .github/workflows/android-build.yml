@@ -94,7 +94,7 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
-          name: PokeSleepRater-signed-update-v0.4.0-${{ github.run_number }}
+          name: PokeSleepRater-signed-update-v0.5.0-${{ github.run_number }}
           path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 30
@@ -139,7 +139,7 @@ jobs:
       - name: Download verified signed APK
         uses: actions/download-artifact@v4
         with:
-          name: PokeSleepRater-signed-update-v0.4.0-${{ github.run_number }}
+          name: PokeSleepRater-signed-update-v0.5.0-${{ github.run_number }}
           path: signed-apk
 
       - name: Publish direct-download APK
@@ -153,11 +153,11 @@ jobs:
           # Every successful build receives its own immutable URL.
           # "releases/latest/download/PokeSleepRater.apk" always points to
           # the newest published release for Android browser downloads.
-          TAG="v0.4.0-build.${GITHUB_RUN_NUMBER}"
+          TAG="v0.5.0-build.${GITHUB_RUN_NUMBER}"
           gh release create "$TAG" PokeSleepRater.apk \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "PokeSleepRater v0.4.0 (build ${GITHUB_RUN_NUMBER})" \
-            --notes "Signed Android release APK. Install over the previous stable-signed APK without uninstalling. Includes automatic Pokémon recognition, interactive overlay, and local assessment history." \
+            --title "PokeSleepRater v0.5.0 (build ${GITHUB_RUN_NUMBER})" \
+            --notes "Signed Android release APK. Install over the previous stable-signed APK without uninstalling. Includes multi-screen OCR aggregation, ingredient Lv1/30/60 tracking, five-field completion progress, interactive overlay, and persistent assessment history." \
             --latest
           echo "APK published: https://github.com/$GITHUB_REPOSITORY/releases/latest/download/PokeSleepRater.apk" >> "$GITHUB_STEP_SUMMARY"
