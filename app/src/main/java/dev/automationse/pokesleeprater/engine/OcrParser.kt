@@ -17,7 +17,7 @@ object OcrParser {
         "スキルレベルアップS", "睡眠EXPボーナス", "リサーチEXPボーナス",
         "ゆめのかけらボーナス", "げんき回復ボーナス",
     )
-    private val level = Regex("(?:Lv|LV|lv|レベル)[.．\\s]*(10|25|50|75|100)")
+    private val level = Regex("(?:Lv|LV|lv|レベル)[.．\\s]*(10|25|50|70|80)(?!\\d)")
     fun parse(text: String): Observation {
         val lines = text.lines().map { it.replace(" ", "").replace("　", "") }.filter { it.isNotBlank() }
         val nature = natures.firstOrNull { n -> lines.any { it.contains(n) } }
@@ -32,6 +32,12 @@ object OcrParser {
                 slots += SkillSlot(parsedLevel, skill)
             }
         }
-        return Observation(nature, slots.distinct(), nature != null || slots.isNotEmpty())
+        val ingredients = IngredientParser.parse(text)
+        return Observation(
+            nature = nature,
+            slots = slots.distinct(),
+            seenAtLeastOnce = nature != null || slots.isNotEmpty() || ingredients.isNotEmpty(),
+            ingredients = ingredients,
+        )
     }
 }
