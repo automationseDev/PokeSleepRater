@@ -123,6 +123,41 @@ jobs:
             echo '- Signed release APK: passed verification'
             echo '- Application ID: dev.automationse.pokesleeprater (unchanged)'
             echo "- versionCode: $(( 1000 + GITHUB_RUN_NUMBER ))"
-            echo '- Download **PokeSleepRater-signed-update-...** from Artifacts.'
+            echo '- Android-friendly APK download: https://github.com/'"$GITHUB_REPOSITORY"'/releases/latest/download/PokeSleepRater.apk'
             echo '- Future releases signed by the same keystore can update in place.'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    name: Publish signed APK to GitHub Releases
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified signed APK
+        uses: actions/download-artifact@v4
+        with:
+          name: PokeSleepRater-signed-update-v0.4.0-${{ github.run_number }}
+          path: signed-apk
+
+      - name: Publish direct-download APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test -s signed-apk/app-release.apk
+          mv signed-apk/app-release.apk PokeSleepRater.apk
+
+          # Every successful build receives its own immutable URL.
+          # "releases/latest/download/PokeSleepRater.apk" always points to
+          # the newest published release for Android browser downloads.
+          TAG="v0.4.0-build.${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" PokeSleepRater.apk \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "PokeSleepRater v0.4.0 (build ${GITHUB_RUN_NUMBER})" \
+            --notes "Signed Android release APK. Install over the previous stable-signed APK without uninstalling. Includes automatic Pokémon recognition, interactive overlay, and local assessment history." \
+            --latest
+          echo "APK published: https://github.com/$GITHUB_REPOSITORY/releases/latest/download/PokeSleepRater.apk" >> "$GITHUB_STEP_SUMMARY"
